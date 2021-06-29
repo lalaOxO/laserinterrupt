@@ -1,0 +1,113 @@
+#include <BluetoothSerial.h>    //藍芽序列函示庫
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "driver/uart.h"
+#include "esp_log.h"
+// 雷射模組所用變數
+byte cmd_0[] = { 0x00, 0x00, 0x00, 0x00 };         // 重置模組
+byte cmd_1[] = { 0x80, 0x06, 0x03, 0x77 };         // 持續測量模式
+byte cmd_2[] = { 0x80, 0x06, 0x02, 0x78 };         // 單次測量模式
+byte cmd_3[] = { 0x80, 0x06, 0x05, 0x01, 0x74 };   // 開啟雷射點
+byte cmd_4[] = { 0x80, 0x06, 0x05, 0x00, 0x75 };   // 關閉雷射點
+byte cmd_5[] = { 0xFA, 0x04, 0x0A, 0x00, 0xF8 };   // 2Hz 設定連續測量間隔
+byte cmd_6[] = { 0xFA, 0x04, 0x0A, 0x05, 0xF3 };   // 5Hz
+byte cmd_7[] = { 0xFA, 0x04, 0x0A, 0x0A, 0xEE };   // 10Hz
+byte cmd_8[] = { 0xFA, 0x04, 0x0A, 0x14, 0xE4 };   // 20Hz
+byte cmd_9[] = { 0xFA, 0x04, 0x09, 0x05, 0xF4 };   // 最大距離5公尺  
+byte cmd_10[] = { 0xFA, 0x04, 0x09, 0x0A, 0xEF };  // 最大距離10公尺 
+byte cmd_11[] = { 0xFA, 0x04, 0x09, 0x1E, 0xDB };  // 最大距離30公尺
+byte cmd_12[] = { 0xFA, 0x04, 0x09, 0x32, 0xC7 };  // 最大距離50公尺
+byte cmd_13[] = { 0xFA, 0x04, 0x09, 0x50, 0xA9 };  // 最大距離80公尺
+byte cmd_14[] = { 0xFA, 0x04, 0x0C, 0x02, 0xF4 };   // 0.1mm 解析度 結果出來的單位
+byte cmd_15[] = { 0xFA, 0x04, 0x0C, 0x01, 0xF5 };   // 1mm 解析度
+
+#define LRF Serial2
+char BT_Char,data;
+String BT_Read;
+String LRF_feedback;
+String measurement, distance;
+bool Laser_Switch;
+int Bytes_counter = 12;
+int val;
+int Time, pasttime, pasttimetwo;
+String pastTime, pastTimetwo;
+BluetoothSerial BT;
+void setup() {
+  Serial.begin(9600);
+  LRF.begin(9600, SERIAL_8N1, 16, 17);
+  BT.begin("BTOxO");  //設定藍芽名稱
+  delay(500);
+  LRF.write(cmd_13,sizeof(cmd_13)); //設定雷射模組測量距離 80m
+  Serial.println("雷射模組量測距離設為 80公尺 ");
+  delay(500);
+  LRF.write(cmd_15,sizeof(cmd_15)); //雷射模組解析度設為 1mm
+  Serial.println("雷射模組解析度設為 1mm");
+  Laser_Switch = false;
+  LRF.write(cmd_4, sizeof(cmd_4));
+  delay(500);
+  uart_disable_tx_intr(UART_NUM_2);
+  uart_disable_rx_intr(UART_NUM_2);
+}
+
+void loop() {
+  Time = millis();
+  while(BT.available()){  //藍芽接收
+     //Laser_Switch= true;
+     BT_Char = BT.read();//BT_Char=藍芽讀到的資料
+     BT_Read += BT_Char;//把BT_Char讀到的資料放進BT_Read
+     Serial.println(BT_Read);
+  }
+  //if (Time - pasttime >= 10000){
+    //pasttime = Time;
+    //Laser_Switch = true;
+    if(Laser_Switch == true){
+      LRF.write(cmd_2, sizeof(cmd_2));
+      delay(150);
+      while (LRF.available() > 0 && Bytes_counter < 12) {
+        data = LRF.read();
+        LRF_feedback += data;
+        Bytes_counter++;
+      }
+    /*if (Bytes_counter == 12){
+      measurement = LRF_feedback.substring(3, 11);
+      Serial.print("Raw Feedback: ");
+      Serial.println(LRF_feedback);
+      Serial.print("Bytes Received: ");
+      Serial.println(Bytes_counter);
+      Serial.print("LRF Measurement: ");
+      Serial.println(measurement);
+      Serial.println(" DONE");
+    }
+    else*/
+    if (Bytes_counter == 11) { // Feedback for the 1mm Resolution Measurement
+      for(int i=4;i<=8;i++){
+      if(i == 6)continue;//第6個位子為小數點
+        measurement += LRF_feedback.substring(i,i+1);//把每一次拿到的值放進去measurement
+      }
+      Serial.print("Raw Feedback: ");
+      Serial.println(LRF_feedback);
+      Serial.print("Bytes Received: ");
+      Serial.println(Bytes_counter);
+      Serial.print("LRF Measurement: ");
+      Serial.println(measurement);
+      //Serial.print("diatance: ");
+      //Serial.println(distance);
+      Serial.println(" DONE");
+      BT.println("02" + measurement);
+      Serial.println("02" + measurement);
+      Serial.println(Time);
+    }
+      //Serial.println("02" + measurement);
+      //BT.println("020218");
+    LRF_feedback = "";
+    Bytes_counter = 0;
+    measurement = "";
+  }
+  //Laser_Switch = false;
+  //}
+ 
+}
